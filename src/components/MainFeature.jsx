@@ -91,7 +91,7 @@ const MainFeature = ({ activeModule, darkMode }) => {
       toast.success(`${activeModule.charAt(0).toUpperCase() + activeModule.slice(1)} item updated successfully!`);
     } else {
       // Add new item
-      const newItem = { ...formData, id: Date.now() };
+      const newItem = { ...formData, id: Date.now(), threshold: activeModule === 'inventory' ? (formData.threshold || 5) : undefined };
       setItems([...items, newItem]);
       toast.success(`New ${activeModule} item added successfully!`);
     }
@@ -173,11 +173,11 @@ const MainFeature = ({ activeModule, darkMode }) => {
               <span className="text-sm text-surface-900 dark:text-surface-100">{item.category}</span>
             </td>
             <td className="px-3 md:px-6 py-4 whitespace-nowrap">
-              <span className="text-sm font-medium text-surface-900 dark:text-surface-100">₹{item.price.toLocaleString()}</span>
+              <span className="text-sm font-medium text-surface-900 dark:text-surface-100">₹{(item.price || 0).toLocaleString()}</span>
             </td>
             <td className="px-3 md:px-6 py-4 whitespace-nowrap">
               <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                item.stock <= item.threshold ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                (item.stock || 0) <= (item.threshold || 0) ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
               }`}>
                 {item.stock}
               </span>
@@ -230,7 +230,7 @@ const MainFeature = ({ activeModule, darkMode }) => {
               <div className="text-xs text-surface-500 dark:text-surface-400 md:hidden">{item.date}</div>
             </td>
             <td className="px-3 md:px-6 py-4 whitespace-nowrap">
-              <span className="text-sm font-medium text-surface-900 dark:text-surface-100">₹{item.amount.toLocaleString()}</span>
+              <span className="text-sm font-medium text-surface-900 dark:text-surface-100">₹{(item.amount || 0).toLocaleString()}</span>
             </td>
             <td className="px-3 md:px-6 py-4 whitespace-nowrap hidden md:table-cell">
               <span className="text-sm text-surface-900 dark:text-surface-100">{item.date}</span>
@@ -262,7 +262,7 @@ const MainFeature = ({ activeModule, darkMode }) => {
               <div className="text-xs text-surface-500 dark:text-surface-400">{item.email}</div>
             </td>
             <td className="px-3 md:px-6 py-4 whitespace-nowrap">
-              <span className="text-sm font-medium text-surface-900 dark:text-surface-100">₹{item.totalSpent.toLocaleString()}</span>
+              <span className="text-sm font-medium text-surface-900 dark:text-surface-100">₹{(item.totalSpent || 0).toLocaleString()}</span>
             </td>
             <td className="px-3 md:px-6 py-4 whitespace-nowrap hidden lg:table-cell">
               <span className="text-sm text-surface-900 dark:text-surface-100">{item.lastVisit}</span>
@@ -391,6 +391,13 @@ const MainFeature = ({ activeModule, darkMode }) => {
                       placeholder="Stock Quantity"
                       value={formData.stock || ''}
                       onChange={(e) => setFormData({...formData, stock: Number(e.target.value)})}
+                      className="w-full px-4 py-2 border border-surface-300 dark:border-surface-600 rounded-xl bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Low Stock Threshold"
+                      value={formData.threshold || ''}
+                      onChange={(e) => setFormData({...formData, threshold: Number(e.target.value)})}
                       className="w-full px-4 py-2 border border-surface-300 dark:border-surface-600 rounded-xl bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100"
                     />
                   </>
