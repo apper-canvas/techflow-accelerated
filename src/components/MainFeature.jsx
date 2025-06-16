@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
+import { useSelector } from 'react-redux';
 import ApperIcon from './ApperIcon';
+import { inventoryService } from '../services/api/inventoryService';
+import { serviceService } from '../services/api/serviceService';
+import { billingService } from '../services/api/billingService';
+import { customersService } from '../services/api/customersService';
 
 const MainFeature = ({ activeModule, darkMode }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -9,59 +14,66 @@ const MainFeature = ({ activeModule, darkMode }) => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [formData, setFormData] = useState({});
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  
+  // Get authentication status
+  const { isAuthenticated } = useSelector((state) => state.user);
 
-  // Sample data for different modules
-  const sampleData = {
-    inventory: [
-      { id: 1, name: 'Gaming Laptop RTX 4070', category: 'Laptops', price: 89999, stock: 15, threshold: 5 },
-      { id: 2, name: 'Wireless Mouse', category: 'Accessories', price: 2999, stock: 3, threshold: 10 },
-      { id: 3, name: 'Antivirus Software', category: 'Software', price: 4999, stock: 50, threshold: 20 },
-      { id: 4, name: '27" Gaming Monitor', category: 'Accessories', price: 25999, stock: 8, threshold: 5 },
-    ],
-    service: [
-      { id: 1, customer: 'John Doe', issue: 'Laptop Screen Repair', status: 'In Progress', technician: 'Mike Wilson', priority: 'High' },
-      { id: 2, customer: 'Sarah Smith', issue: 'Software Installation', status: 'Pending', technician: 'Not Assigned', priority: 'Medium' },
-      { id: 3, customer: 'Bob Johnson', issue: 'Hardware Upgrade', status: 'Completed', technician: 'Alex Chen', priority: 'Low' },
-      { id: 4, customer: 'Emma Davis', issue: 'Virus Removal', status: 'In Progress', technician: 'Mike Wilson', priority: 'High' },
-    ],
-    billing: [
-      { id: 1, customer: 'John Doe', amount: 15999, status: 'Paid', date: '2024-01-15', items: 2 },
-      { id: 2, customer: 'Sarah Smith', amount: 89999, status: 'Unpaid', date: '2024-01-14', items: 1 },
-      { id: 3, customer: 'Bob Johnson', amount: 7500, status: 'Partial', date: '2024-01-13', items: 3 },
-      { id: 4, customer: 'Emma Davis', amount: 25999, status: 'Paid', date: '2024-01-12', items: 1 },
-    ],
-    customers: [
-      { id: 1, name: 'John Doe', phone: '+91 98765 43210', email: 'john@email.com', totalSpent: 45999, lastVisit: '2024-01-15' },
-      { id: 2, name: 'Sarah Smith', phone: '+91 87654 32109', email: 'sarah@email.com', totalSpent: 89999, lastVisit: '2024-01-14' },
-      { id: 3, name: 'Bob Johnson', phone: '+91 76543 21098', email: 'bob@email.com', totalSpent: 12500, lastVisit: '2024-01-13' },
-      { id: 4, name: 'Emma Davis', phone: '+91 65432 10987', email: 'emma@email.com', totalSpent: 33999, lastVisit: '2024-01-12' },
-    ]
+  // Service mapping
+  const services = {
+    inventory: inventoryService,
+    service: serviceService,
+    billing: billingService,
+    customers: customersService
   };
 
   useEffect(() => {
-    setItems(sampleData[activeModule] || []);
+    if (isAuthenticated && activeModule) {
+      loadData();
+    }
     setSearchTerm('');
-  }, [activeModule]);
+  }, [activeModule, isAuthenticated]);
 
-  const filteredItems = items.filter(item => {
+  const loadData = async () => {
+    if (!isAuthenticated) return;
+    
+    setLoading(true);
+    setError(null);
+    try {
+      const service = services[activeModule];
+      if (service) {
+        const data = await service.getAll();
+        setItems(data || []);
+      }
+    } catch (err) {
+      setError(err.message);
+      setItems([]);
+      console.error(`Error loading ${activeModule} data:`, err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+const filteredItems = items.filter(item => {
     if (!searchTerm) return true;
     
     const searchLower = searchTerm.toLowerCase();
     
     switch (activeModule) {
       case 'inventory':
-        return item.name.toLowerCase().includes(searchLower) || 
-               item.category.toLowerCase().includes(searchLower);
+        return (item.Name || '').toLowerCase().includes(searchLower) || 
+               (item.category || '').toLowerCase().includes(searchLower);
       case 'service':
-        return item.customer.toLowerCase().includes(searchLower) || 
-               item.issue.toLowerCase().includes(searchLower) ||
-               item.technician.toLowerCase().includes(searchLower);
+        return (item.customer || '').toLowerCase().includes(searchLower) || 
+               (item.issue || '').toLowerCase().includes(searchLower) ||
+               (item.technician || '').toLowerCase().includes(searchLower);
       case 'billing':
-        return item.customer.toLowerCase().includes(searchLower);
+        return (item.customer || '').toLowerCase().includes(searchLower);
       case 'customers':
-        return item.name.toLowerCase().includes(searchLower) || 
-               item.email.toLowerCase().includes(searchLower) ||
-               item.phone.includes(searchTerm);
+        return (item.Name || '').toLowerCase().includes(searchLower) || 
+               (item.email || '').toLowerCase().includes(searchLower) ||
+               (item.phone || '').includes(searchTerm);
       default:
         return true;
     }
@@ -79,23 +91,50 @@ const MainFeature = ({ activeModule, darkMode }) => {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id) => {
-    setItems(items.filter(item => item.id !== id));
-    toast.success(`${activeModule.charAt(0).toUpperCase() + activeModule.slice(1)} item deleted successfully!`);
+const handleDelete = async (id) => {
+    if (!isAuthenticated) return;
+    
+    if (!confirm('Are you sure you want to delete this item?')) return;
+    
+    try {
+      const service = services[activeModule];
+      if (service) {
+        await service.delete(id);
+        setItems(items.filter(item => item.Id !== id));
+      }
+    } catch (error) {
+      console.error(`Error deleting ${activeModule} item:`, error);
+    }
   };
 
-  const handleSave = () => {
-    if (selectedItem) {
-      // Edit existing item
-      setItems(items.map(item => item.id === selectedItem.id ? { ...formData } : item));
-      toast.success(`${activeModule.charAt(0).toUpperCase() + activeModule.slice(1)} item updated successfully!`);
-    } else {
-      // Add new item
-      const newItem = { ...formData, id: Date.now(), threshold: activeModule === 'inventory' ? (formData.threshold || 5) : undefined };
-      setItems([...items, newItem]);
-      toast.success(`New ${activeModule} item added successfully!`);
+  const handleSave = async () => {
+    if (!isAuthenticated) return;
+    
+    setLoading(true);
+    try {
+      const service = services[activeModule];
+      if (!service) return;
+      
+      if (selectedItem) {
+        // Edit existing item
+        const updatedItem = await service.update(selectedItem.Id, formData);
+        if (updatedItem) {
+          setItems(items.map(item => item.Id === selectedItem.Id ? updatedItem : item));
+        }
+      } else {
+        // Add new item
+        const newItem = await service.create(formData);
+        if (newItem) {
+          setItems([...items, newItem]);
+        }
+      }
+      setIsModalOpen(false);
+      setFormData({});
+    } catch (error) {
+      console.error(`Error saving ${activeModule} item:`, error);
+    } finally {
+      setLoading(false);
     }
-    setIsModalOpen(false);
   };
 
   const getStatusColor = (status) => {
@@ -164,9 +203,9 @@ const MainFeature = ({ activeModule, darkMode }) => {
     switch (activeModule) {
       case 'inventory':
         return (
-          <tr key={item.id} className="bg-white dark:bg-surface-800 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">
+<tr key={item.Id} className="bg-white dark:bg-surface-800 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">
             <td className="px-3 md:px-6 py-4 whitespace-nowrap">
-              <div className="text-sm font-medium text-surface-900 dark:text-surface-100">{item.name}</div>
+              <div className="text-sm font-medium text-surface-900 dark:text-surface-100">{item.Name}</div>
               <div className="text-xs text-surface-500 dark:text-surface-400 md:hidden">{item.category}</div>
             </td>
             <td className="px-3 md:px-6 py-4 whitespace-nowrap hidden md:table-cell">
@@ -186,15 +225,15 @@ const MainFeature = ({ activeModule, darkMode }) => {
               <button onClick={() => handleEdit(item)} className="text-primary hover:text-primary-dark">
                 <ApperIcon name="Edit2" className="w-4 h-4" />
               </button>
-              <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">
+              <button onClick={() => handleDelete(item.Id)} className="text-red-600 hover:text-red-900">
                 <ApperIcon name="Trash2" className="w-4 h-4" />
               </button>
             </td>
           </tr>
         );
       case 'service':
-        return (
-          <tr key={item.id} className="bg-white dark:bg-surface-800 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">
+return (
+          <tr key={item.Id} className="bg-white dark:bg-surface-800 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">
             <td className="px-3 md:px-6 py-4 whitespace-nowrap">
               <div className="text-sm font-medium text-surface-900 dark:text-surface-100">{item.customer}</div>
               <div className="text-xs text-surface-500 dark:text-surface-400 lg:hidden">{item.issue}</div>
@@ -216,15 +255,15 @@ const MainFeature = ({ activeModule, darkMode }) => {
               <button onClick={() => handleEdit(item)} className="text-primary hover:text-primary-dark">
                 <ApperIcon name="Edit2" className="w-4 h-4" />
               </button>
-              <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">
+              <button onClick={() => handleDelete(item.Id)} className="text-red-600 hover:text-red-900">
                 <ApperIcon name="Trash2" className="w-4 h-4" />
               </button>
             </td>
           </tr>
         );
       case 'billing':
-        return (
-          <tr key={item.id} className="bg-white dark:bg-surface-800 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">
+return (
+          <tr key={item.Id} className="bg-white dark:bg-surface-800 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">
             <td className="px-3 md:px-6 py-4 whitespace-nowrap">
               <div className="text-sm font-medium text-surface-900 dark:text-surface-100">{item.customer}</div>
               <div className="text-xs text-surface-500 dark:text-surface-400 md:hidden">{item.date}</div>
@@ -251,10 +290,10 @@ const MainFeature = ({ activeModule, darkMode }) => {
           </tr>
         );
       case 'customers':
-        return (
-          <tr key={item.id} className="bg-white dark:bg-surface-800 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">
+return (
+          <tr key={item.Id} className="bg-white dark:bg-surface-800 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">
             <td className="px-3 md:px-6 py-4 whitespace-nowrap">
-              <div className="text-sm font-medium text-surface-900 dark:text-surface-100">{item.name}</div>
+              <div className="text-sm font-medium text-surface-900 dark:text-surface-100">{item.Name}</div>
               <div className="text-xs text-surface-500 dark:text-surface-400 md:hidden">{item.phone}</div>
             </td>
             <td className="px-3 md:px-6 py-4 hidden md:table-cell">
@@ -262,16 +301,16 @@ const MainFeature = ({ activeModule, darkMode }) => {
               <div className="text-xs text-surface-500 dark:text-surface-400">{item.email}</div>
             </td>
             <td className="px-3 md:px-6 py-4 whitespace-nowrap">
-              <span className="text-sm font-medium text-surface-900 dark:text-surface-100">₹{(item.totalSpent || 0).toLocaleString()}</span>
+              <span className="text-sm font-medium text-surface-900 dark:text-surface-100">₹{(item.total_spent || 0).toLocaleString()}</span>
             </td>
             <td className="px-3 md:px-6 py-4 whitespace-nowrap hidden lg:table-cell">
-              <span className="text-sm text-surface-900 dark:text-surface-100">{item.lastVisit}</span>
+              <span className="text-sm text-surface-900 dark:text-surface-100">{item.last_visit}</span>
             </td>
             <td className="px-3 md:px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1 md:space-x-2">
               <button onClick={() => handleEdit(item)} className="text-primary hover:text-primary-dark">
                 <ApperIcon name="Edit2" className="w-4 h-4" />
               </button>
-              <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">
+              <button onClick={() => handleDelete(item.Id)} className="text-red-600 hover:text-red-900">
                 <ApperIcon name="Trash2" className="w-4 h-4" />
               </button>
             </td>
@@ -321,15 +360,33 @@ const MainFeature = ({ activeModule, darkMode }) => {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-surface-200 dark:divide-surface-700">
-          <thead>
-            {renderTableHeaders()}
-          </thead>
-          <tbody className="divide-y divide-surface-200 dark:divide-surface-700">
-            {filteredItems.map(renderTableRow)}
-          </tbody>
-        </table>
+<div className="overflow-x-auto">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-lg text-surface-600 dark:text-surface-400">Loading...</div>
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-lg text-red-600 dark:text-red-400">Error: {error}</div>
+          </div>
+        ) : !isAuthenticated ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-lg text-surface-600 dark:text-surface-400">Please log in to view data</div>
+          </div>
+        ) : filteredItems.length === 0 ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-lg text-surface-600 dark:text-surface-400">No {activeModule} records found</div>
+          </div>
+        ) : (
+          <table className="min-w-full divide-y divide-surface-200 dark:divide-surface-700">
+            <thead>
+              {renderTableHeaders()}
+            </thead>
+            <tbody className="divide-y divide-surface-200 dark:divide-surface-700">
+              {filteredItems.map(renderTableRow)}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* Modal */}
@@ -362,11 +419,11 @@ const MainFeature = ({ activeModule, darkMode }) => {
               <div className="space-y-4">
                 {activeModule === 'inventory' && (
                   <>
-                    <input
+<input
                       type="text"
                       placeholder="Product Name"
-                      value={formData.name || ''}
-                      onChange={(e) => setFormData({...formData, name: e.target.value})}
+                      value={formData.Name || ''}
+                      onChange={(e) => setFormData({...formData, Name: e.target.value})}
                       className="w-full px-4 py-2 border border-surface-300 dark:border-surface-600 rounded-xl bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100"
                     />
                     <select
@@ -444,11 +501,11 @@ const MainFeature = ({ activeModule, darkMode }) => {
 
                 {activeModule === 'customers' && (
                   <>
-                    <input
+<input
                       type="text"
                       placeholder="Customer Name"
-                      value={formData.name || ''}
-                      onChange={(e) => setFormData({...formData, name: e.target.value})}
+                      value={formData.Name || ''}
+                      onChange={(e) => setFormData({...formData, Name: e.target.value})}
                       className="w-full px-4 py-2 border border-surface-300 dark:border-surface-600 rounded-xl bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100"
                     />
                     <input
